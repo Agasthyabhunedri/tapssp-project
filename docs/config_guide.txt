@@ -1,0 +1,16 @@
+CONFIGURATION GUIDE
+
+Log Settings:
+- log_max_size = 10MB
+- log_rotation_days = 7
+- log_path = "./logs/"
+
+Database Settings:
+- database_url = "sqlite://app.db"
+- pool_size = 5
+
+Network:
+- timeout_ms = 5000
+- retry_attempts = 3
+
+These settings define how the system behaves at runtime.

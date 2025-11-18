@@ -1,0 +1,22 @@
+[package]
+name = "tapssp-project"
+version = "0.1.0"
+edition = "2021"
+authors = ["Agasthya Bhunedri <you@example.com>"]
+description = "Rust RAG CLI - Retrieval-Augmented Generation over local documents"
+license = "MIT"
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4.5", features = ["derive"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+walkdir = "2.5"
+rusqlite = { version = "0.32", features = ["bundled"] }
+reqwest = { version = "0.12", features = ["json", "blocking", "rustls-tls"] }
+dotenvy = "0.15"
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1.10", features = ["v4", "serde"] }
+
+[dev-dependencies]
+# tests use main dependencies

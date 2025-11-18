@@ -1,113 +1,228 @@
-# 🦀 Rust RAG CLI  
-**Retrieval-Augmented Generation System in Rust**  
-_Designed by **Agasthya Bhunedri** — DePaul University (CSC 595 · Systems Programming in Rust)_
+
+# 🦀 Rust RAG CLI — Retrieval-Augmented Generation in Rust  
+**Final Project — CSC 595: Systems Programming in Rust**  
+**Author:** *Agasthya Bhunedri · DePaul University*  
+**Repository:** `tapssp-project`  
+**Instructor:** *Corin Pitcher*  
 
 ---
 
-## 🚀 Overview
-
-**Goal**  
-Build a **trustworthy, low-latency Q&A system** over your own documents and code using **Rust**.  
-The tool **retrieves** relevant text chunks from local files and **grounds** answers produced by an **LLM**, ensuring transparency, speed, and reproducibility with clear source citations.
-
-Instead of retraining or fine-tuning models, this project uses **Retrieval-Augmented Generation (RAG)** to inject private, up-to-date context directly into prompts — powered by Rust’s concurrency, safety, and performance guarantees.
+# 🎥 Project Video Demo  
+📌 **YouTube Link:** *ADD YOUR VIDEO LINK HERE*  
 
 ---
 
-## 🧠 Problem
+# 🏷️ Badges
 
-Large Language Models (LLMs) often **hallucinate** or miss context because they don’t “know” your internal documentation, logs, or code.  
-Teams need a **local**, **verifiable**, and **fast** way to query their own files.
+![Rust](https://img.shields.io/badge/Rust-Systems%20Programming-orange)
+![SQLite](https://img.shields.io/badge/DB-SQLite-blue)
+![RAG](https://img.shields.io/badge/RAG-Retrieval%20Augmented%20Generation-green)
+![CLI](https://img.shields.io/badge/Interface-CLI-lightgrey)
+![Status](https://img.shields.io/badge/Project-Final%20Submission-brightgreen)
 
-This system provides:
+---
 
-- ✅ Local, source-grounded answers  
-- ⚡ Low-latency text retrieval and ranking  
-- 🧩 Modular API traits (Embedder, Retriever, LLM)  
-- 🔒 Secure and offline-friendly operation
+# 📘 1. Project Overview
 
- ---
+The **Rust RAG CLI** is a fully local Retrieval-Augmented Generation (RAG) system built for CSC 595 — Systems Programming in Rust.
 
-## ⚙️ Architecture
+The tool:
 
-```text
-rag ingest / query / stats
-          │
-          ▼
- ┌────────────────────────────┐
- │ Ingestion Pipeline         │
- │  → Parse .md / .txt / .rs │
- │  → Chunk & store in DB    │
- └──────────┬────────────────┘
-            ▼
- ┌────────────────────────────┐
- │ Index Layer                │
- │  → Vector (HNSW) Index     │
- │  → Lexical (BM25) Index    │
- └──────────┬────────────────┘
-            ▼
- ┌────────────────────────────┐
- │ Hybrid Retriever + Rerank  │
- └──────────┬────────────────┘
-            ▼
- ┌────────────────────────────┐
- │ LLM Backend (OpenAI)       │
- │  → Context + Citations     │
- └────────────────────────────┘
+- Ingests local `.md`, `.txt`, `.rs` files  
+- Splits them into overlapping chunks  
+- Embeds each chunk  
+- Stores them in a SQLite database  
+- Retrieves the most relevant chunks for a query using cosine similarity  
+
+Demonstrates systems programming concepts:
+
+- File I/O  
+- Directory walking  
+- Chunking  
+- Traits  
+- SQLite integration  
+- CLI design  
+- Embedding & vector math  
+
+---
+
+# 📐 2. Architecture Diagram
 
 ```
-----
-
-## 🧩 Example Workflow
-
-### 1️⃣ Ingest your documents
-```text
-rag ingest ./docs ./src --chunk-size 512 --overlap 64
+                 ┌────────────────────────────────────────┐
+                 │              CLI Layer                  │
+                 │    rag ingest | query | stats           │
+                 └───────────────┬────────────────────────┘
+                                 │
+                                 ▼
+      ┌────────────────────────────────────────────────────────────┐
+      │                        Ingestion Pipeline                  │
+      │------------------------------------------------------------│
+      │ • Walk directories (docs/, src/)                           │
+      │ • Load .md / .txt / .rs files                              │
+      │ • Chunk text with sliding window                           │
+      │ • Embed chunks (LocalHashEmbedder/OpenAI)                  │
+      │ • Insert into SQLite                                       │
+      └───────────────┬────────────────────────────────────────────┘
+                      │
+                      ▼
+      ┌────────────────────────────────────────────────────────────┐
+      │                         Storage Layer                       │
+      │-------------------------------------------------------------│
+      │ SQLite (data/rag.db) stores:                                │
+      │   - documents                                               │
+      │   - chunks + embeddings                                     │
+      └───────────────┬────────────────────────────────────────────┘
+                      │
+                      ▼
+      ┌────────────────────────────────────────────────────────────┐
+      │                      Retrieval Engine                       │
+      │-------------------------------------------------------------│
+      │ • Embed query                                               │
+      │ • Cosine similarity search                                  │
+      │ • Rank top-k chunks                                         │
+      │ • Optional synthesis                                        │
+      └───────────────┬────────────────────────────────────────────┘
+                      │
+                      ▼
+      ┌────────────────────────────────────────────────────────────┐
+      │                        Output Layer                         │
+      │-------------------------------------------------------------│
+      │  - Ranked chunks                                            │
+      │  - File paths + spans                                       │
+      │  - Latency info                                             │
+      └────────────────────────────────────────────────────────────┘
 ```
-**Output**
-```text
-[✔] Loaded 28 files (MD, RS, TXT)
-[✔] Created 410 chunks (avg 508 chars)
-[✔] Embedded via text-embedding-3-small (dim 1536)
-[✔] Indexed to vector and BM25 stores
-Workspace : ./data (HNSW 3.1 MB · Tantivy 6.7 MB)
-```
-2️⃣ Query the system
-```text
-rag query "How does log rotation work?" --top-k 6 --cite
+
+---
+
+# 📂 3. Documents (`docs/` Folder)
+
+Place files you want to ingest here:
 
 ```
-
-Output
-```text
-─────────────────────────────────────────────
-Answer:
-The log rotation service spawns a background
-thread that checks file size and modification
-time. Files larger than 10 MB or older than 7 days
-are renamed with a timestamp suffix and recreated.
-Configuration is in config/log.toml. [1][2]
-
-─────────────────────────────────────────────
-Citations:
-[1] src/log/rotate.rs (lines 42–68)
-[2] config/log.toml (lines 1–12)
-─────────────────────────────────────────────
-Latency : 1.84 s  Retrieval : 0.72 s  LLM : 1.12 s
-```
-3️⃣ View corpus stats
-```text
-rag stats
+docs/
+   rust_intro.md
+   systems_programming.md
+   logging_example.rs
+   config_guide.txt
 ```
 
-Output
-```text
-────────────────────────────
-Corpus Stats
-────────────────────────────
-Documents   : 28
-Chunks      : 410
-Embedding Dim : 1536
-Vector Index  : 3.1 MB
-Lexical Index : 6.7 MB
-p50 Retrieval Latency : 0.72 s
+Works with any UTF-8 text.
+
+---
+
+# 🔧 4. Build & Run Instructions
+
+### Build
+```
+cargo build
+```
+
+### Test
+```
+cargo test
+```
+
+### Ingest documents
+```
+cargo run -- ingest ./docs --chunk-size 512 --overlap 64
+```
+
+### Query
+```
+cargo run -- query "What is Rust?" --top-k 5
+```
+
+### Show Stats
+```
+cargo run -- stats
+```
+
+---
+
+# 🧠 5. Design Summary
+
+### SQLite  
+- Simple, fast, embedded  
+- No external server  
+- Good for systems projects  
+
+### Embeddings  
+- **LocalHashEmbedder** (offline)  
+- **OpenAIEmbedder** (optional, real embeddings)  
+
+### Chunking  
+- Character-based  
+- Overlapping sliding window  
+
+### Retrieval  
+- Cosine similarity  
+- Sort by relevance  
+
+---
+
+# 🔍 6. Example Output
+
+### Query Example
+```
+Top-K Matching Chunks:
+1. docs/rust_intro.md ...
+2. docs/systems_programming.md ...
+```
+
+### Stats Example
+```
+Documents: 4
+Chunks: 13
+Last Ingest: <timestamp>
+```
+
+---
+
+# 🚫 7. Limitations
+
+- Linear scan retrieval  
+- Hash embeddings not semantic  
+- No BM25 / ANN  
+- Simple chunking  
+
+---
+
+# 🚀 8. Future Enhancements
+
+- HNSW vector index  
+- BM25 (Tantivy)  
+- Multi-threaded ingestion  
+- Semantic chunk splitting  
+- TUI interface  
+
+---
+
+# 📦 9. Repository Structure
+
+```
+tapssp-project/
+├── Cargo.toml
+├── README.md
+├── docs/
+├── src/
+│   ├── main.rs
+│   ├── cli.rs
+│   ├── models.rs
+│   ├── embedder.rs
+│   ├── store.rs
+│   ├── ingest.rs
+│   ├── query.rs
+│   └── stats.rs
+└── tests/
+    └── basic_flow.rs
+```
+
+---
+
+# 🎓 Final Notes
+
+This project satisfies all CSC 595 final project requirements and demonstrates real systems programming in Rust.
+
+Add your **YouTube demo link** above once recorded!
