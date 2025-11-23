@@ -8,7 +8,7 @@
 ---
 
 # 🎥 Project Video Demo  
-📌 **YouTube Link:** *ADD YOUR VIDEO LINK HERE*  
+📌 **YouTube Link:** *https://youtu.be/3sQTPIutZ3c*  
 
 ---
 
@@ -220,9 +220,3 @@ tapssp-project/
 ```
 
 ---
-
-# 🎓 Final Notes
-
-This project satisfies all CSC 595 final project requirements and demonstrates real systems programming in Rust.
-
-Add your **YouTube demo link** above once recorded!

@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use anyhow::{anyhow, Result};
 use chrono::Utc;
@@ -10,7 +10,17 @@ use crate::embedder::Embedder;
 use crate::models::{Chunk, Document};
 use crate::store::Store;
 
+/// Internal struct to hold chunk metadata before we have embeddings.
+struct PendingChunk {
+    doc_id: Uuid,
+    chunk_index: i32,
+    start_char: i32,
+    end_char: i32,
+    text: String,
+}
+
 /// Entry point used from CLI.
+/// Now batches ALL chunks from ALL files into a single embedder call.
 pub fn run_ingest(
     store: &Store,
     embedder: &dyn Embedder,
@@ -28,9 +38,76 @@ pub fn run_ingest(
     let files = collect_files(paths)?;
     println!("[ingest] Found {} files to ingest", files.len());
 
+    // Collect all chunks from all files before calling embedder.
+    let mut pending_chunks: Vec<PendingChunk> = Vec::new();
+
     for path in files {
-        ingest_single_file(store, embedder, &path, chunk_size, overlap)?;
+        let content = fs::read_to_string(&path)?;
+        if content.trim().is_empty() {
+            println!("[ingest] Skipping empty file {}", path.display());
+            continue;
+        }
+
+        let doc = Document {
+            id: Uuid::new_v4(),
+            path: path.to_string_lossy().to_string(),
+            created_at: Utc::now(),
+        };
+        store.insert_document(&doc)?;
+
+        let chunks_text = chunk_text(&content, chunk_size, overlap);
+        let num_chunks = chunks_text.len();
+
+        for (idx, (start, end, text)) in chunks_text.into_iter().enumerate() {
+            pending_chunks.push(PendingChunk {
+                doc_id: doc.id,
+                chunk_index: idx as i32,
+                start_char: start as i32,
+                end_char: end as i32,
+                text,
+            });
+        }
+
+        println!(
+            "[ingest] {} -> {} chunks",
+            doc.path,
+            num_chunks
+        );
     }
+
+    if pending_chunks.is_empty() {
+        println!("[ingest] No chunks to embed; nothing to do.");
+        return Ok(());
+    }
+
+    // Build a single batch of all chunk texts.
+    let texts: Vec<String> = pending_chunks.iter().map(|c| c.text.clone()).collect();
+
+    // SINGLE embedding call for ALL chunks across ALL files.
+    let embeddings = embedder.embed(&texts)?;
+    if embeddings.len() != pending_chunks.len() {
+        return Err(anyhow!(
+            "embedder returned {} vectors for {} texts",
+            embeddings.len(),
+            pending_chunks.len()
+        ));
+    }
+
+    // Insert chunks with embeddings into the store.
+    for (pending, emb) in pending_chunks.into_iter().zip(embeddings.into_iter()) {
+        let chunk = Chunk {
+            id: Uuid::new_v4(),
+            doc_id: pending.doc_id,
+            chunk_index: pending.chunk_index,
+            text: pending.text,
+            embedding: emb,
+            start_char: pending.start_char,
+            end_char: pending.end_char,
+        };
+        store.insert_chunk(&chunk)?;
+    }
+
+    println!("[ingest] Done embedding and storing all chunks.");
 
     Ok(())
 }
@@ -54,53 +131,6 @@ fn collect_files(paths: &[PathBuf]) -> Result<Vec<PathBuf>> {
         }
     }
     Ok(files)
-}
-
-fn ingest_single_file(
-    store: &Store,
-    embedder: &dyn Embedder,
-    path: &Path,
-    chunk_size: usize,
-    overlap: usize,
-) -> Result<()> {
-    let content = fs::read_to_string(path)?;
-    if content.trim().is_empty() {
-        println!("[ingest] Skipping empty file {}", path.display());
-        return Ok(());
-    }
-
-    let doc = Document {
-        id: Uuid::new_v4(),
-        path: path.to_string_lossy().to_string(),
-        created_at: Utc::now(),
-    };
-    store.insert_document(&doc)?;
-
-    let chunks_text = chunk_text(&content, chunk_size, overlap);
-    let texts: Vec<String> = chunks_text.iter().map(|(_, _, text)| text.clone()).collect();
-
-    let embeddings = embedder.embed(&texts)?;
-
-    for (idx, ((start, end, text), emb)) in chunks_text.into_iter().zip(embeddings).enumerate() {
-        let chunk = Chunk {
-            id: Uuid::new_v4(),
-            doc_id: doc.id,
-            chunk_index: idx as i32,
-            text,
-            embedding: emb,
-            start_char: start as i32,
-            end_char: end as i32,
-        };
-        store.insert_chunk(&chunk)?;
-    }
-
-    println!(
-        "[ingest] {} -> {} chunks",
-        path.display(),
-        texts.len()
-    );
-
-    Ok(())
 }
 
 /// Chunk text into overlapping windows (by character).
